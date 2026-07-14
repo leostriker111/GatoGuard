@@ -1,0 +1,149 @@
+import math
+import os
+
+VOCALES = set("aeiouáéíóúü")
+LETRAS = set("abcdefghijklmnopqrstuvwxyzñáéíóúü")
+SEPARADORES = {"space", "enter", "tab", "esc"}
+
+# teclas que un humano SI mantiene un rato -> no cuentan como "tecla pegada"
+EXENTAS_HOLD = {
+    "space", "backspace", "enter", "tab", "delete", "up", "down", "left",
+    "right", "page up", "page down", "shift", "ctrl", "alt", "left shift",
+    "right shift", "left ctrl", "right ctrl", "left alt", "right alt",
+    "left windows", "right windows",
+}
+
+SCORE_THRESH = 0.5
+
+
+class Lexico:
+    """Diccionario de frecuencias del espanol para juzgar si algo es texto real."""
+
+    def __init__(self):
+        self.words = {}
+        self.prefixes = set()
+        self.maxlog = 1.0
+
+    @classmethod
+    def cargar(cls, paths, limite=30000):
+        lx = cls()
+        if isinstance(paths, str):
+            paths = [paths]
+        for path in paths:
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as f:
+                for i, line in enumerate(f):
+                    if i >= limite:
+                        break
+                    parts = line.split()
+                    if len(parts) != 2:
+                        continue
+                    w, fr = parts[0].lower(), int(parts[1])
+                    if fr > lx.words.get(w, 0):
+                        lx.words[w] = fr
+                    for k in range(1, len(w) + 1):
+                        lx.prefixes.add(w[:k])
+        if lx.words:
+            lx.maxlog = math.log(max(lx.words.values()))
+        return lx
+
+    def _edits1(self, w):
+        splits = [(w[:i], w[i:]) for i in range(len(w) + 1)]
+        borra = [a + b[1:] for a, b in splits if b]
+        trans = [a + b[1] + b[0] + b[2:] for a, b in splits if len(b) > 1]
+        reemp = [a + c + b[1:] for a, b in splits if b for c in LETRAS]
+        inser = [a + c + b for a, b in splits for c in LETRAS]
+        return set(borra + trans + reemp + inser)
+
+    def _heuristica(self, t):
+        if len(t) < 2:
+            return 0.7
+        v = sum(c in VOCALES for c in t) / len(t)
+        run = maxrun = 0
+        for c in t:
+            run = 0 if c in VOCALES else run + 1
+            maxrun = max(maxrun, run)
+        base = 0.6 if 0.2 <= v <= 0.65 else 0.3
+        if maxrun >= 4:
+            base -= 0.3
+        return max(0.0, min(1.0, base))
+
+    def score(self, token):
+        """0..1: que tan probable es que 'token' sea una palabra real que alguien teclea."""
+        t = token.lower()
+        if not t:
+            return 1.0
+        if t in self.words:
+            return 0.6 + 0.4 * (math.log(self.words[t]) / self.maxlog)
+        if t in self.prefixes:
+            return 0.8
+        for e in self._edits1(t):
+            if e in self.words or e in self.prefixes:
+                return 0.6
+        return self._heuristica(t)
+
+
+class Detector:
+    def __init__(self, config, lexico):
+        self.cfg = config
+        self.lx = lexico
+        self.held = {}        # scan_code -> (name, down_time)
+        self.recent = {}      # scan_code -> time del ultimo down
+        self.token = ""       # palabra que se esta escribiendo
+
+    def reset_estado(self):
+        self.held.clear()
+        self.recent.clear()
+        self.token = ""
+
+    def _actualiza_token(self, name):
+        if len(name) == 1 and name in LETRAS:
+            self.token = (self.token + name)[-12:]
+        elif name == "backspace":
+            self.token = self.token[:-1]
+        elif name in SEPARADORES or len(name) == 1:
+            self.token = ""
+
+    def feed(self, name, scan_code, event_type, now, campo=True):
+        """Devuelve el motivo (str) si parece gato, o None."""
+        c = self.cfg
+        if event_type == "up":
+            self.held.pop(scan_code, None)
+            return None
+
+        self.held.setdefault(scan_code, (name, now))
+        # limpiar teclas fantasma (se perdio el key-up al cambiar de ventana)
+        for sc, (nm, t) in list(self.held.items()):
+            if now - t > 8.0:
+                del self.held[sc]
+        self.recent[scan_code] = now
+        for sc, t in list(self.recent.items()):
+            if now - t > c["burst_window"]:
+                del self.recent[sc]
+        self._actualiza_token(name)
+
+        if c["simultaneas"]:
+            juntas = sum(1 for (nm, t) in self.held.values() if now - t < 1.5)
+            if juntas >= c["held_threshold"]:
+                return "teclas simultaneas"
+
+        if c["rafaga"]:
+            agresivo = c["sin_campo"] and not campo
+            keys = c["burst_keys"] - 2 if agresivo else c["burst_keys"]
+            if len(self.recent) >= keys:
+                if not c["prediccion"] or agresivo:
+                    return "rafaga sin sentido"
+                if self.lx.score(self.token) < SCORE_THRESH:
+                    return "rafaga sin palabra valida"
+        return None
+
+    def check_hold(self, now):
+        """Se llama periodicamente: detecta una tecla pegada mucho tiempo."""
+        if not self.cfg["tecla_pegada"]:
+            return None
+        limite = self.cfg["hold_ms"] / 1000.0
+        for name, t in list(self.held.values()):
+            if name not in EXENTAS_HOLD and now - t >= limite:
+                return "tecla pegada"
+        return None
