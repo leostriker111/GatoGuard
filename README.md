@@ -4,7 +4,7 @@
 [![Descargas](https://img.shields.io/github/downloads/leostriker111/GatoGuard/total)](https://github.com/leostriker111/GatoGuard/releases)
 [![Plataforma](https://img.shields.io/badge/plataforma-Windows-0078D6?logo=windows)](#)
 [![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](#)
-[![Licencia](https://img.shields.io/github/license/leostriker111/GatoGuard)](LICENSE)
+[![Licencia](https://img.shields.io/badge/licencia-PolyForm%20Noncommercial-ff69b4)](LICENSE)
 
 Anti-gato para el teclado en **Windows**, al estilo [PawSense](https://www.bitboost.com/pawsense/) pero libre y en tu idioma.
 
@@ -103,5 +103,9 @@ pip install pyinstaller
 ```
 El `.exe` queda en `dist/GatoGuard.exe`.
 
+## 🩷 Apoya el proyecto
+GatoGuard es **gratis** y siempre lo será. Si te ahorró un desastre en el teclado, puedes invitarme un café — cada peso ayuda a que le siga metiendo features. Los donantes aparecen en los créditos. ¡Gracias! 🐈
+<!-- Botón de Sponsor arriba a la derecha del repo, o Ko-fi (por configurar). -->
+
 ## 📝 Licencia
-MIT — ve [LICENSE](LICENSE). Diccionarios de FrequencyWords (MIT).
+**[PolyForm Noncommercial 1.0.0](LICENSE)** — puedes usar, estudiar, modificar y compartir el software libremente **para fines no comerciales**. No se permite venderlo ni usarlo con fines de lucro. Diccionarios de [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT).
