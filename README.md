@@ -1,5 +1,11 @@
 # 🐈 GatoGuard
 
+[![Release](https://img.shields.io/github/v/release/leostriker111/GatoGuard)](https://github.com/leostriker111/GatoGuard/releases)
+[![Descargas](https://img.shields.io/github/downloads/leostriker111/GatoGuard/total)](https://github.com/leostriker111/GatoGuard/releases)
+[![Plataforma](https://img.shields.io/badge/plataforma-Windows-0078D6?logo=windows)](#)
+[![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)](#)
+[![Licencia](https://img.shields.io/github/license/leostriker111/GatoGuard)](LICENSE)
+
 Anti-gato para el teclado en **Windows**, al estilo [PawSense](https://www.bitboost.com/pawsense/) pero libre y en tu idioma.
 
 Detecta cuando un gato se sube al teclado analizando **el comportamiento del tecleo** (sin cámara) y bloquea la entrada hasta que un humano lo desbloquea. También destraba el "modo raro" que dejan los gatos (modificadores atorados, Sticky Keys, etc.).

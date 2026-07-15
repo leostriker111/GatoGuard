@@ -203,6 +203,12 @@ def registrar_hotkeys():
 
 # ---------------- bandeja ----------------
 def icono_img():
+    ico = os.path.join(BUNDLE, "gatoguard.ico")
+    if os.path.exists(ico):
+        try:
+            return Image.open(ico)
+        except Exception:
+            pass
     img = Image.new("RGBA", (64, 64), (16, 16, 20, 255))
     d = ImageDraw.Draw(img)
     d.polygon([(14, 30), (22, 12), (30, 30)], fill=(58, 122, 254, 255))

@@ -6,8 +6,10 @@ pip install pyinstaller | Out-Null
 
 pyinstaller --noconfirm --clean --onefile --windowed `
     --name GatoGuard `
+    --icon gatoguard.ico `
     --add-data "es_50k.txt;." `
     --add-data "en_50k.txt;." `
+    --add-data "gatoguard.ico;." `
     --collect-submodules pystray `
     --hidden-import win32timezone `
     gatoguard.py
