@@ -87,6 +87,34 @@ def test_sin_campo_mas_agresivo():
     assert motivo, "sin campo de texto debe ser mas agresivo"
 
 
+def test_atajo_modificadores_no_dispara():
+    # Ctrl+Shift+S: 2 modificadores + 1 tecla -> NO debe contar como simultaneas
+    d = det()
+    m = None
+    m = m or d.feed("ctrl", 29, "down", 1.0)
+    m = m or d.feed("shift", 42, "down", 1.05)
+    m = m or d.feed("s", 31, "down", 1.1)
+    assert m is None, "un atajo con modificadores no debe botar"
+
+
+def test_gaming_simultaneas_no_dispara_en_pantalla_completa():
+    # WASD sostenidas en un juego (pantalla completa) -> no debe botar
+    d = det()
+    m = None
+    for i, k in enumerate("wasd"):
+        m = m or d.feed(k, 40 + i, "down", 2.0, juego=True)
+    assert m is None, "WASD en juego no debe botar"
+
+
+def test_gaming_si_dispara_fuera_de_juego():
+    # esas mismas teclas sostenidas en el escritorio (no juego) -> si es gato
+    d = det()
+    m = None
+    for i, k in enumerate("wasd"):
+        m = m or d.feed(k, 40 + i, "down", 3.0, juego=False)
+    assert m, "varias teclas sostenidas fuera de un juego si debe botar"
+
+
 if __name__ == "__main__":
     for name in [n for n in dir() if n.startswith("test_")]:
         globals()[name]()

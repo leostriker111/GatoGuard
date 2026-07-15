@@ -44,6 +44,47 @@ def idiomas_teclado():
         return ["en"]
 
 
+kernel32 = ctypes.windll.kernel32
+
+
+def _exe_de_pid(pid):
+    h = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(260)
+        size = wintypes.DWORD(260)
+        if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+            return buf.value.rsplit("\\", 1)[-1].lower()
+    finally:
+        kernel32.CloseHandle(h)
+    return ""
+
+
+def _es_pantalla_completa(hwnd):
+    try:
+        l, t, r, b = win32gui.GetWindowRect(hwnd)
+        sw = user32.GetSystemMetrics(0)
+        sh = user32.GetSystemMetrics(1)
+        if r - l >= sw and b - t >= sh:
+            if win32gui.GetClassName(hwnd) in ("Progman", "WorkerW"):
+                return False  # es el escritorio, no una app
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def app_frontal():
+    """(exe_en_minusculas, pantalla_completa) de la ventana activa."""
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return _exe_de_pid(pid), _es_pantalla_completa(hwnd)
+    except Exception:
+        return "", False
+
+
 def hay_campo_texto():
     """True si la ventana activa tiene un caret (campo editable enfocado)."""
     try:

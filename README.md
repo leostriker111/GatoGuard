@@ -16,9 +16,11 @@ Detecta cuando un gato se sube al teclado analizando **el comportamiento del tec
   - Una tecla pegada mucho tiempo (gato sentado encima)
 - **Predicción de texto** para no botar cuando *tú* escribes rápido: compara contra un diccionario de frecuencias, tolera *typos* y errores de dedo, y a mayor frecuencia de la palabra admite más velocidad.
 - **Multi-idioma auto-detectado**: agarra los idiomas de tu teclado de Windows. Incluye diccionarios de español e inglés; otros (p. ej. japonés en *romaji*) los cubre una heurística de vocales.
+- **Bloqueo total** con un hook de bajo nivel propio: bloquea de verdad F11, la tecla Windows, `Win+Ctrl+D` (escritorio nuevo) y demás combos que otras herramientas dejan pasar.
+- **Consciente de la app al frente**: relaja la detección en juegos a pantalla completa e ignora las teclas típicas de juego (WASD, flechas). Lista de apps a ignorar configurable.
 - **Reset del teclado** al desbloquear: suelta modificadores atorados, apaga CapsLock y desactiva Sticky/Filter/Toggle keys.
-- **Atajos que funcionan aun bloqueado**: `Ctrl+Alt+U` desbloquea, `Ctrl+Alt+G` pausa.
-- **Ocultar cursor** al bloquear para que el gato no lo persiga.
+- **Congelar el mouse** con `Ctrl+Alt+M` (aviso en una esquina): el gato juega con el puntero, tú lo congelas cuando quieras.
+- **Atajos que funcionan aun bloqueado**: `Ctrl+Alt+U` desbloquea, `Ctrl+Alt+G` pausa, `Ctrl+Alt+M` congela el mouse.
 - **Ícono en la bandeja** con GUI de configuración (todo ajustable en vivo).
 - No requiere permisos de administrador.
 
@@ -56,6 +58,7 @@ Para que arranque solo con Windows, crea un acceso directo a `GatoGuard.exe` (o 
 |---|---|
 | Desbloquear | Clic en cualquier parte de la pantalla de bloqueo, o `Ctrl+Alt+U` |
 | Pausar / reanudar | `Ctrl+Alt+G`, o el menú de la bandeja |
+| Congelar / descongelar mouse | `Ctrl+Alt+M` (el aviso vive en una esquina) |
 | Configurar | Clic derecho en el ícono → **Configuración** |
 | Resetear teclado ya | Menú de la bandeja → **Resetear teclado ahora** |
 | Salir | Menú de la bandeja → **Salir** |

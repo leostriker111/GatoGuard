@@ -13,6 +13,19 @@ EXENTAS_HOLD = {
     "left windows", "right windows",
 }
 
+MODIFICADORES = {
+    "shift", "ctrl", "alt", "left shift", "right shift", "left ctrl",
+    "right ctrl", "left alt", "right alt", "left windows", "right windows",
+    "caps lock", "windows",
+}
+
+# teclas tipicas de videojuego: si TODO lo presionado cae aqui (y hay pantalla
+# completa) asumimos que estas jugando, no un gato
+GAMING = {
+    "w", "a", "s", "d", "up", "down", "left", "right", "space", "shift",
+    "ctrl", "alt", "e", "q", "r", "f", "c", "v", "tab", "1", "2", "3", "4", "5",
+}
+
 SCORE_THRESH = 0.5
 
 
@@ -105,8 +118,9 @@ class Detector:
         elif name in SEPARADORES or len(name) == 1:
             self.token = ""
 
-    def feed(self, name, scan_code, event_type, now, campo=True):
-        """Devuelve el motivo (str) si parece gato, o None."""
+    def feed(self, name, scan_code, event_type, now, campo=True, juego=False):
+        """Devuelve el motivo (str) si parece gato, o None.
+        juego=True (app en pantalla completa) relaja para no botar jugando."""
         c = self.cfg
         if event_type == "up":
             self.held.pop(scan_code, None)
@@ -117,21 +131,29 @@ class Detector:
         for sc, (nm, t) in list(self.held.items()):
             if now - t > 8.0:
                 del self.held[sc]
-        self.recent[scan_code] = now
-        for sc, t in list(self.recent.items()):
+        self.recent[scan_code] = (name, now)
+        for sc, (nm, t) in list(self.recent.items()):
             if now - t > c["burst_window"]:
                 del self.recent[sc]
         self._actualiza_token(name)
 
         if c["simultaneas"]:
-            juntas = sum(1 for (nm, t) in self.held.values() if now - t < 1.5)
-            if juntas >= c["held_threshold"]:
-                return "teclas simultaneas"
+            # los modificadores no cuentan: Ctrl+Shift+X es un atajo, no un gato
+            nomod = [nm for (nm, t) in self.held.values()
+                     if now - t < 1.5 and nm not in MODIFICADORES]
+            if len(nomod) >= c["held_threshold"]:
+                if not (juego and all(k in GAMING for k in nomod)):
+                    return "teclas simultaneas"
 
         if c["rafaga"]:
+            nombres = [nm for (nm, t) in self.recent.values()]
             agresivo = c["sin_campo"] and not campo
             keys = c["burst_keys"] - 2 if agresivo else c["burst_keys"]
+            if juego:
+                keys += 2
             if len(self.recent) >= keys:
+                if juego and all(k in GAMING for k in nombres):
+                    return None  # estas jugando (WASD/flechas), no un gato
                 if not c["prediccion"] or agresivo:
                     return "rafaga sin sentido"
                 if self.lx.score(self.token) < SCORE_THRESH:

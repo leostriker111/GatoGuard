@@ -11,6 +11,7 @@ import pystray
 from PIL import Image, ImageDraw
 
 import deteccion
+import hooks
 import winutils
 
 if getattr(sys, "frozen", False):          # corriendo como .exe (PyInstaller)
@@ -30,16 +31,19 @@ DEFAULTS = {
     "tecla_pegada": True,
     "prediccion": True,
     "sin_campo": False,          # apagado por defecto: era lo que botaba de mas
-    "ocultar_cursor": True,
+    "ignorar_pantalla_completa": True,
     "reset_teclado": True,
-    "held_threshold": 4,
-    "burst_keys": 6,
+    "mostrar_hint": True,
+    "held_threshold": 3,
+    "burst_keys": 5,
     "burst_window": 0.45,
     "hold_ms": 1300,
     "cooldown": 1.0,
     "languages": [],             # [] = autodetectar del teclado
+    "apps_ignoradas": [],        # exes donde NO vigilar (ej. juego.exe)
     "hotkey_unlock": "ctrl+alt+u",
     "hotkey_pause": "ctrl+alt+g",
+    "hotkey_mouse": "ctrl+alt+m",
 }
 
 ETIQUETAS = {
@@ -48,8 +52,9 @@ ETIQUETAS = {
     "tecla_pegada": "Detectar una tecla pegada mucho tiempo",
     "prediccion": "Predicción de texto (no botar al escribir rápido)",
     "sin_campo": "Ser más agresivo si no hay campo de texto",
-    "ocultar_cursor": "Ocultar el cursor al bloquear",
+    "ignorar_pantalla_completa": "Relajar detección en apps de pantalla completa (juegos)",
     "reset_teclado": "Resetear teclado al estado default al desbloquear",
+    "mostrar_hint": "Mostrar el aviso del mouse en la esquina",
 }
 SLIDERS = {
     "held_threshold": ("Teclas simultáneas para disparar", 2, 6, 1),
@@ -108,54 +113,46 @@ cmd_queue = queue.Queue()
 locked = False
 paused = False
 resume_after = 0.0
-block_hook = None
-combo_pressed = set()
+key_blocker = None
+mouse_blocker = None
+mouse_frozen = False
 settings = None
 icon = None
+_front = (0.0, ("", False))
 
 
-def _norm(name):
-    n = (name or "").lower()
-    for m in ("ctrl", "alt", "shift", "win"):
-        if m in n:
-            return m
-    return n
-
-
-def _combo_ok(combo, pressed):
-    partes = {_norm(p) for p in combo.split("+")}
-    return partes.issubset(pressed)
+def app_al_frente():
+    """(exe, pantalla_completa) con cache corto para no consultar cada tecla."""
+    global _front
+    ahora = time.time()
+    if ahora - _front[0] > 0.4:
+        _front = (ahora, winutils.app_frontal())
+    return _front[1]
 
 
 # ---------------- teclado ----------------
 def monitor(e):
     if paused or locked or e.time < resume_after:
         return
+    exe, full = app_al_frente()
+    if exe in cfg["apps_ignoradas"]:
+        return
     campo = winutils.hay_campo_texto() if cfg["sin_campo"] else True
-    motivo = detector.feed(e.name or "", e.scan_code, e.event_type, e.time, campo)
+    juego = full and cfg["ignorar_pantalla_completa"]
+    motivo = detector.feed(e.name or "", e.scan_code, e.event_type, e.time, campo, juego)
     if motivo:
         cmd_queue.put(("LOCK", motivo))
 
 
-def _block(e):
-    # bloquea TODO menos el atajo de desbloqueo, que se vigila aparte
-    if e.event_type == "down":
-        combo_pressed.add(_norm(e.name))
-    else:
-        combo_pressed.discard(_norm(e.name))
-    if _combo_ok(cfg["hotkey_unlock"], combo_pressed):
-        cmd_queue.put(("UNLOCK", None))
-    return False
-
-
 def entrar_lock(motivo):
-    global locked, block_hook
+    global locked, key_blocker
     locked = True
-    combo_pressed.clear()
-    block_hook = keyboard.hook(_block, suppress=True)
+    # hook crudo: bloquea TODO (incluye F11, Win+Ctrl+D, etc.) menos la combo
+    key_blocker = hooks.KeyBlocker(cfg["hotkey_unlock"],
+                                   lambda: cmd_queue.put(("UNLOCK", None)))
+    key_blocker.start()
     motivo_var.set("Motivo: " + motivo)
     salida_var.set("Clic en cualquier parte  ·  o  " + cfg["hotkey_unlock"].upper())
-    overlay.config(cursor="none" if cfg["ocultar_cursor"] else "arrow")
     overlay.deiconify()
     overlay.attributes("-fullscreen", True)
     overlay.attributes("-topmost", True)
@@ -164,13 +161,12 @@ def entrar_lock(motivo):
 
 
 def unlock(_=None):
-    global locked, block_hook, resume_after
+    global locked, key_blocker, resume_after
     if not locked:
         return
-    if block_hook:
-        keyboard.unhook(block_hook)
-        block_hook = None
-    combo_pressed.clear()
+    if key_blocker:
+        key_blocker.stop()
+        key_blocker = None
     detector.reset_estado()
     if cfg["reset_teclado"]:
         winutils.reset_teclado()
@@ -186,9 +182,23 @@ def toggle_pause(*_):
         detector.reset_estado()
 
 
+def toggle_mouse(*_):
+    global mouse_blocker, mouse_frozen
+    if mouse_frozen:
+        if mouse_blocker:
+            mouse_blocker.stop()
+            mouse_blocker = None
+        mouse_frozen = False
+    else:
+        mouse_blocker = hooks.MouseBlocker()
+        mouse_blocker.start()
+        mouse_frozen = True
+    actualizar_hint()
+
+
 def registrar_hotkeys():
-    keyboard.add_hotkey(cfg["hotkey_pause"], lambda: cmd_queue.put(("PAUSE", None)),
-                        suppress=False)
+    keyboard.add_hotkey(cfg["hotkey_pause"], lambda: cmd_queue.put(("PAUSE", None)))
+    keyboard.add_hotkey(cfg["hotkey_mouse"], lambda: cmd_queue.put(("MOUSE", None)))
 
 
 # ---------------- bandeja ----------------
@@ -253,7 +263,8 @@ def build_settings():
 
     tk.Label(win, text="Atajos", font=("Segoe UI", 12, "bold"),
              **L).pack(anchor="w", pady=(12, 2))
-    for key, txt in [("hotkey_unlock", "Desbloquear"), ("hotkey_pause", "Pausar/Reanudar")]:
+    for key, txt in [("hotkey_unlock", "Desbloquear"), ("hotkey_pause", "Pausar/Reanudar"),
+                     ("hotkey_mouse", "Congelar mouse")]:
         row = tk.Frame(win, bg="#1a1a20")
         row.pack(anchor="w", fill="x")
         tk.Label(row, text=txt + ":", width=16, anchor="w", bg="#1a1a20",
@@ -262,6 +273,16 @@ def build_settings():
         win.vars[key] = v
         tk.Entry(row, textvariable=v, width=18, bg="#2a2a33", fg="#ffffff",
                  insertbackground="#ffffff", relief="flat").pack(side="left")
+
+    row = tk.Frame(win, bg="#1a1a20")
+    row.pack(anchor="w", fill="x", pady=(6, 0))
+    tk.Label(row, text="Apps ignoradas:", width=16, anchor="w", bg="#1a1a20",
+             fg="#9a9aa6", font=("Segoe UI", 9)).pack(side="left")
+    win.apps_var = tk.StringVar(value=", ".join(cfg["apps_ignoradas"]))
+    tk.Entry(row, textvariable=win.apps_var, width=28, bg="#2a2a33", fg="#ffffff",
+             insertbackground="#ffffff", relief="flat").pack(side="left")
+    tk.Label(win, text="(exe separados por coma, ej. juego.exe)", bg="#1a1a20",
+             fg="#5a5a66", font=("Segoe UI", 8)).pack(anchor="w")
 
     tk.Label(win, text="Sensibilidad", font=("Segoe UI", 12, "bold"),
              **L).pack(anchor="w", pady=(12, 2))
@@ -279,10 +300,12 @@ def build_settings():
             val = v.get()
             cfg[key] = int(val) if key in ("held_threshold", "burst_keys", "hold_ms") else val
         cfg["languages"] = [c for c, v in win.langs.items() if v.get()]
+        cfg["apps_ignoradas"] = [a.strip().lower() for a in win.apps_var.get().split(",") if a.strip()]
         save_cfg(cfg)
         detector.lx = cargar_lexico(cfg)
         keyboard.remove_all_hotkeys()
         registrar_hotkeys()
+        actualizar_hint()
         win.withdraw()
 
     tk.Button(win, text="Guardar", font=("Segoe UI", 11, "bold"), bg="#3a7afe",
@@ -314,6 +337,8 @@ def poll():
                 unlock()
             elif cmd == "PAUSE":
                 toggle_pause()
+            elif cmd == "MOUSE":
+                toggle_mouse()
             elif cmd == "SETTINGS":
                 mostrar_settings()
             elif cmd == "RESET":
@@ -336,6 +361,48 @@ root = tk.Tk()
 root.withdraw()
 motivo_var = tk.StringVar(value="")
 salida_var = tk.StringVar(value="")
+hint_var = tk.StringVar(value="")
+
+
+def _click_through(win):
+    import ctypes
+    hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
+    GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT = -20, 0x80000, 0x20
+    cur = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    ctypes.windll.user32.SetWindowLongW(
+        hwnd, GWL_EXSTYLE, cur | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+
+
+hint = tk.Toplevel(root)
+hint.overrideredirect(True)
+hint.attributes("-topmost", True)
+hint.attributes("-alpha", 0.80)
+hint.configure(bg="#101014")
+hint_lbl = tk.Label(hint, textvariable=hint_var, bg="#101014", fg="#9a9aa6",
+                    font=("Segoe UI", 9), padx=10, pady=4)
+hint_lbl.pack()
+hint.withdraw()
+
+
+def actualizar_hint():
+    if not cfg["mostrar_hint"]:
+        hint.withdraw()
+        return
+    combo = cfg["hotkey_mouse"].upper()
+    if mouse_frozen:
+        hint_var.set("🖱 MOUSE CONGELADO · " + combo)
+        hint_lbl.config(fg="#ff6b6b")
+    else:
+        hint_var.set("🖱 " + combo + " congela el mouse")
+        hint_lbl.config(fg="#6a6a76")
+    hint.update_idletasks()
+    w, h = hint.winfo_reqwidth(), hint.winfo_reqheight()
+    x = root.winfo_screenwidth() - w - 14
+    y = root.winfo_screenheight() - h - 48
+    hint.geometry(f"+{x}+{y}")
+    hint.deiconify()
+    hint.lift()
+    _click_through(hint)
 
 overlay = tk.Toplevel(root)
 overlay.withdraw()
@@ -365,6 +432,7 @@ def main():
     registrar_hotkeys()
     resume_after = time.time() + 1.0
     threading.Thread(target=tray_thread, daemon=True).start()
+    actualizar_hint()
     root.after(30, poll)
     root.mainloop()
 
