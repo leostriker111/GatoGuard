@@ -33,7 +33,7 @@ DEFAULTS = {
     "sin_campo": False,          # apagado por defecto: era lo que botaba de mas
     "ignorar_pantalla_completa": True,
     "reset_teclado": True,
-    "mostrar_hint": True,
+    "mostrar_overlay": True,
     "held_threshold": 3,
     "burst_keys": 5,
     "burst_window": 0.45,
@@ -44,6 +44,7 @@ DEFAULTS = {
     "hotkey_unlock": "ctrl+alt+u",
     "hotkey_pause": "ctrl+alt+g",
     "hotkey_mouse": "ctrl+alt+m",
+    "hotkey_overlay": "ctrl+alt+h",
 }
 
 ETIQUETAS = {
@@ -54,7 +55,7 @@ ETIQUETAS = {
     "sin_campo": "Ser más agresivo si no hay campo de texto",
     "ignorar_pantalla_completa": "Relajar detección en apps de pantalla completa (juegos)",
     "reset_teclado": "Resetear teclado al estado default al desbloquear",
-    "mostrar_hint": "Mostrar el aviso del mouse en la esquina",
+    "mostrar_overlay": "Mostrar el panel de estado en la esquina",
 }
 SLIDERS = {
     "held_threshold": ("Teclas simultáneas para disparar", 2, 6, 1),
@@ -116,6 +117,7 @@ resume_after = 0.0
 key_blocker = None
 mouse_blocker = None
 mouse_frozen = False
+overlay_oculto = False
 settings = None
 icon = None
 _front = (0.0, ("", False))
@@ -180,6 +182,13 @@ def toggle_pause(*_):
     paused = not paused
     if paused:
         detector.reset_estado()
+    actualizar_hint()
+
+
+def toggle_overlay(*_):
+    global overlay_oculto
+    overlay_oculto = not overlay_oculto
+    actualizar_hint()
 
 
 def toggle_mouse(*_):
@@ -199,6 +208,7 @@ def toggle_mouse(*_):
 def registrar_hotkeys():
     keyboard.add_hotkey(cfg["hotkey_pause"], lambda: cmd_queue.put(("PAUSE", None)))
     keyboard.add_hotkey(cfg["hotkey_mouse"], lambda: cmd_queue.put(("MOUSE", None)))
+    keyboard.add_hotkey(cfg["hotkey_overlay"], lambda: cmd_queue.put(("OVERLAY", None)))
 
 
 # ---------------- bandeja ----------------
@@ -270,7 +280,7 @@ def build_settings():
     tk.Label(win, text="Atajos", font=("Segoe UI", 12, "bold"),
              **L).pack(anchor="w", pady=(12, 2))
     for key, txt in [("hotkey_unlock", "Desbloquear"), ("hotkey_pause", "Pausar/Reanudar"),
-                     ("hotkey_mouse", "Congelar mouse")]:
+                     ("hotkey_mouse", "Congelar mouse"), ("hotkey_overlay", "Ocultar panel")]:
         row = tk.Frame(win, bg="#1a1a20")
         row.pack(anchor="w", fill="x")
         tk.Label(row, text=txt + ":", width=16, anchor="w", bg="#1a1a20",
@@ -345,6 +355,8 @@ def poll():
                 toggle_pause()
             elif cmd == "MOUSE":
                 toggle_mouse()
+            elif cmd == "OVERLAY":
+                toggle_overlay()
             elif cmd == "SETTINGS":
                 mostrar_settings()
             elif cmd == "RESET":
@@ -367,7 +379,9 @@ root = tk.Tk()
 root.withdraw()
 motivo_var = tk.StringVar(value="")
 salida_var = tk.StringVar(value="")
+estado_var = tk.StringVar(value="")
 hint_var = tk.StringVar(value="")
+ocultar_var = tk.StringVar(value="")
 
 
 def _click_through(win):
@@ -382,25 +396,40 @@ def _click_through(win):
 hint = tk.Toplevel(root)
 hint.overrideredirect(True)
 hint.attributes("-topmost", True)
-hint.attributes("-alpha", 0.80)
+hint.attributes("-alpha", 0.82)
 hint.configure(bg="#101014")
-hint_lbl = tk.Label(hint, textvariable=hint_var, bg="#101014", fg="#9a9aa6",
-                    font=("Segoe UI", 9), padx=10, pady=4)
-hint_lbl.pack()
+estado_lbl = tk.Label(hint, textvariable=estado_var, bg="#101014", fg="#6ab0ff",
+                      font=("Segoe UI", 9, "bold"), anchor="e")
+estado_lbl.pack(fill="x", padx=10, pady=(5, 0))
+hint_lbl = tk.Label(hint, textvariable=hint_var, bg="#101014", fg="#6a6a76",
+                    font=("Segoe UI", 9), anchor="e")
+hint_lbl.pack(fill="x", padx=10)
+ocultar_lbl = tk.Label(hint, textvariable=ocultar_var, bg="#101014", fg="#4a4a54",
+                       font=("Segoe UI", 8), anchor="e")
+ocultar_lbl.pack(fill="x", padx=10, pady=(0, 5))
 hint.withdraw()
 
 
 def actualizar_hint():
-    if not cfg["mostrar_hint"]:
+    if not cfg["mostrar_overlay"] or overlay_oculto:
         hint.withdraw()
         return
+    if paused:
+        estado_var.set("😴 No hay gatos cerca · detección en pausa  (" +
+                       cfg["hotkey_pause"].upper() + ")")
+        estado_lbl.config(fg="#8a8a96")
+    else:
+        estado_var.set("🐈 Hay gatos cerca · vigilando  (" +
+                       cfg["hotkey_pause"].upper() + ")")
+        estado_lbl.config(fg="#6ab0ff")
     combo = cfg["hotkey_mouse"].upper()
     if mouse_frozen:
-        hint_var.set("🖱 MOUSE CONGELADO · " + combo)
+        hint_var.set("🖱 Mouse CONGELADO · " + combo)
         hint_lbl.config(fg="#ff6b6b")
     else:
         hint_var.set("🖱 " + combo + " congela el mouse")
         hint_lbl.config(fg="#6a6a76")
+    ocultar_var.set("🙈 " + cfg["hotkey_overlay"].upper() + " oculta este panel")
     hint.update_idletasks()
     w, h = hint.winfo_reqwidth(), hint.winfo_reqheight()
     x = root.winfo_screenwidth() - w - 14

@@ -26,7 +26,8 @@ Detecta cuando un gato se sube al teclado analizando **el comportamiento del tec
 - **Consciente de la app al frente**: relaja la detección en juegos a pantalla completa e ignora las teclas típicas de juego (WASD, flechas). Lista de apps a ignorar configurable.
 - **Reset del teclado** al desbloquear: suelta modificadores atorados, apaga CapsLock y desactiva Sticky/Filter/Toggle keys.
 - **Congelar el mouse** con `Ctrl+Alt+M` (aviso en una esquina): el gato juega con el puntero, tú lo congelas cuando quieras.
-- **Atajos que funcionan aun bloqueado**: `Ctrl+Alt+U` desbloquea, `Ctrl+Alt+G` pausa, `Ctrl+Alt+M` congela el mouse.
+- **Modo descanso**: `Ctrl+Alt+G` deja de detectar sin cerrar la app (🐈 *hay gatos cerca* ↔ 😴 *no hay gatos cerca*), con panel de estado en la esquina.
+- **Atajos que funcionan aun bloqueado**: `Ctrl+Alt+U` desbloquea, `Ctrl+Alt+M` congela el mouse, `Ctrl+Alt+H` oculta el panel.
 - **Ícono en la bandeja** con GUI de configuración (todo ajustable en vivo).
 - No requiere permisos de administrador.
 
@@ -63,8 +64,11 @@ Para que arranque solo con Windows, crea un acceso directo a `GatoGuard.exe` (o 
 | Acción | Cómo |
 |---|---|
 | Desbloquear | Clic en cualquier parte de la pantalla de bloqueo, o `Ctrl+Alt+U` |
-| Pausar / reanudar | `Ctrl+Alt+G`, o el menú de la bandeja |
+| Modo descanso (dejar de detectar sin cerrar) | `Ctrl+Alt+G` — alterna entre 🐈 *Hay gatos cerca* y 😴 *No hay gatos cerca* |
 | Congelar / descongelar mouse | `Ctrl+Alt+M` (el aviso vive en una esquina) |
+| Ocultar / mostrar el panel de estado | `Ctrl+Alt+H` |
+
+El **panel de estado** (esquina inferior derecha) muestra si está vigilando o en descanso, el estado del mouse y cómo ocultarlo. Es *click-through* (no estorba los clics).
 | Configurar | Clic derecho en el ícono → **Configuración** |
 | Resetear teclado ya | Menú de la bandeja → **Resetear teclado ahora** |
 | Salir | Menú de la bandeja → **Salir** |
