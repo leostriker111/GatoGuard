@@ -103,7 +103,8 @@ class KeyBlocker(_LLHook):
             name = _vk_norm(vk)
             if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
                 self.pressed.add(name)
-                if self.combo and self.combo.issubset(self.pressed):
+                # Esc = salida de emergencia, o la combo de desbloqueo
+                if vk == 0x1B or (self.combo and self.combo.issubset(self.pressed)):
                     self.on_unlock()
             elif wParam in (WM_KEYUP, WM_SYSKEYUP):
                 self.pressed.discard(name)

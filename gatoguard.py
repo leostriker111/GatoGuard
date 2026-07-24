@@ -154,7 +154,7 @@ def entrar_lock(motivo):
                                    lambda: cmd_queue.put(("UNLOCK", None)))
     key_blocker.start()
     motivo_var.set("Motivo: " + motivo)
-    salida_var.set("Clic en cualquier parte  ·  o  " + cfg["hotkey_unlock"].upper())
+    salida_var.set("Clic en cualquier parte  ·  Esc  ·  o  " + cfg["hotkey_unlock"].upper())
     overlay.deiconify()
     overlay.attributes("-fullscreen", True)
     overlay.attributes("-topmost", True)
@@ -368,8 +368,9 @@ def poll():
                 return
     except queue.Empty:
         pass
-    if not locked and not paused:
-        m = detector.check_hold(time.time())
+    ahora = time.time()
+    if not locked and not paused and ahora >= resume_after:
+        m = detector.check_hold(ahora)
         if m:
             entrar_lock(m)
     root.after(30, poll)
@@ -463,9 +464,10 @@ tk.Button(_f, text="Desbloquear", font=("Segoe UI", 16, "bold"), bg="#3a7afe",
 def main():
     global resume_after
     winutils.reset_teclado()
+    detector.reset_estado()
     keyboard.hook(monitor)
     registrar_hotkeys()
-    resume_after = time.time() + 1.0
+    resume_after = time.time() + 5.0   # gracia de arranque: no botar apenas prende
     threading.Thread(target=tray_thread, daemon=True).start()
     actualizar_hint()
     root.after(30, poll)
