@@ -385,13 +385,27 @@ hint_var = tk.StringVar(value="")
 ocultar_var = tk.StringVar(value="")
 
 
-def _click_through(win):
-    import ctypes
-    hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
-    GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT = -20, 0x80000, 0x20
-    cur = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-    ctypes.windll.user32.SetWindowLongW(
-        hwnd, GWL_EXSTYLE, cur | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+def _click_through(win, alpha=0.82):
+    """Hace la ventana click-through SIN romper el render (argtypes bien puestos,
+    y re-aplica el alpha para forzar repintado de la ventana layered)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        u.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+        u.GetAncestor.restype = wintypes.HWND
+        u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+        u.GetWindowLongW.restype = ctypes.c_long
+        u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+        u.SetLayeredWindowAttributes.argtypes = [
+            wintypes.HWND, wintypes.COLORREF, ctypes.c_ubyte, wintypes.DWORD]
+        hwnd = u.GetAncestor(win.winfo_id(), 2)  # GA_ROOT = ventana top-level real
+        GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT = -20, 0x00080000, 0x00000020
+        cur = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE, cur | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+        u.SetLayeredWindowAttributes(hwnd, 0, int(alpha * 255), 0x2)  # LWA_ALPHA
+    except Exception:
+        pass  # si falla, la ventana se queda visible (no click-through) pero funciona
 
 
 hint = tk.Toplevel(root)
@@ -461,8 +475,17 @@ tk.Button(_f, text="Desbloquear", font=("Segoe UI", 16, "bold"), bg="#3a7afe",
           relief="flat", padx=30, pady=12, cursor="hand2", command=unlock).pack()
 
 
+def _instancia_unica():
+    """Evita que se apilen varias copias (que pelearian por los hotkeys)."""
+    import ctypes
+    ctypes.windll.kernel32.CreateMutexW(None, False, "GatoGuard_SingleInstance")
+    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
 def main():
     global resume_after
+    if not _instancia_unica():
+        return
     winutils.reset_teclado()
     detector.reset_estado()
     keyboard.hook(monitor)
