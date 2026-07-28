@@ -211,6 +211,34 @@ def registrar_hotkeys():
     keyboard.add_hotkey(cfg["hotkey_overlay"], lambda: cmd_queue.put(("OVERLAY", None)))
 
 
+def rearmar(*_):
+    """Reinstala el hook y los atajos. La lib `keyboard` los pierde tras
+    suspender/bloquear Windows; esto los revive."""
+    global resume_after
+    try:
+        keyboard.unhook_all()
+    except Exception:
+        pass
+    try:
+        keyboard._listener.listening = False  # fuerza un SetWindowsHookEx nuevo
+    except Exception:
+        pass
+    keyboard.hook(monitor)
+    registrar_hotkeys()
+    resume_after = time.time() + 3.0
+
+
+def watchdog():
+    """Detecta que la compu se suspendio (salto de tiempo) y re-arma al despertar."""
+    ultimo = time.monotonic()
+    while True:
+        time.sleep(3)
+        ahora = time.monotonic()
+        if ahora - ultimo > 12:   # el sleep(3) tardo mucho -> hubo suspension
+            cmd_queue.put(("REARM", None))
+        ultimo = ahora
+
+
 # ---------------- bandeja ----------------
 def icono_img():
     ico = os.path.join(BUNDLE, "gatoguard.ico")
@@ -235,6 +263,8 @@ def tray_thread():
         pystray.MenuItem("Configuración", lambda i, x: cmd_queue.put(("SETTINGS", None))),
         pystray.MenuItem("Pausado", lambda i, x: cmd_queue.put(("PAUSE", None)),
                          checked=lambda i: paused),
+        pystray.MenuItem("Reactivar detección (si dejó de responder)",
+                         lambda i, x: cmd_queue.put(("REARM", None))),
         pystray.MenuItem("Resetear teclado ahora", lambda i, x: cmd_queue.put(("RESET", None))),
         pystray.MenuItem("Salir", lambda i, x: cmd_queue.put(("QUIT", None))),
     )
@@ -357,6 +387,8 @@ def poll():
                 toggle_mouse()
             elif cmd == "OVERLAY":
                 toggle_overlay()
+            elif cmd == "REARM":
+                rearmar()
             elif cmd == "SETTINGS":
                 mostrar_settings()
             elif cmd == "RESET":
@@ -492,6 +524,7 @@ def main():
     registrar_hotkeys()
     resume_after = time.time() + 5.0   # gracia de arranque: no botar apenas prende
     threading.Thread(target=tray_thread, daemon=True).start()
+    threading.Thread(target=watchdog, daemon=True).start()
     actualizar_hint()
     root.after(30, poll)
     root.mainloop()
