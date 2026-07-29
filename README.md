@@ -68,7 +68,7 @@ Para que arranque solo con Windows, crea un acceso directo a `GatoGuard.exe` (o 
 | Congelar / descongelar mouse | `Ctrl+Alt+M` (el aviso vive en una esquina) |
 | Ocultar / mostrar el panel de estado | `Ctrl+Alt+H` |
 
-> Si tras suspender la PC los atajos dejan de responder, GatoGuard se **re-arma solo** al despertar. Si aun así no responde, usa **bandeja → "Reactivar detección"**.
+> Al suspender la PC, la librería de teclado pierde su hook. GatoGuard **se reinicia solo** al despertar (proceso nuevo = hooks nuevos). Si alguna vez no responde, **bandeja → "Reactivar detección"** hace el mismo reinicio manualmente.
 
 El **panel de estado** (esquina inferior derecha) muestra si está vigilando o en descanso, el estado del mouse y cómo ocultarlo. Es *click-through* (no estorba los clics).
 | Configurar | Clic derecho en el ícono → **Configuración** |

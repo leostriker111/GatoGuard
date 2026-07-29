@@ -120,6 +120,7 @@ mouse_frozen = False
 overlay_oculto = False
 settings = None
 icon = None
+_mutex = None
 _front = (0.0, ("", False))
 
 
@@ -211,31 +212,41 @@ def registrar_hotkeys():
     keyboard.add_hotkey(cfg["hotkey_overlay"], lambda: cmd_queue.put(("OVERLAY", None)))
 
 
-def rearmar(*_):
-    """Reinstala el hook y los atajos. La lib `keyboard` los pierde tras
-    suspender/bloquear Windows; esto los revive."""
-    global resume_after
+def reiniciar(*_):
+    """Relanza el proceso desde cero (hooks nuevos garantizados) y sale.
+    La lib `keyboard` no revive su hook tras el reposo ni forzandolo, asi que
+    un proceso fresco es la unica forma confiable. Se llama directo (sin pasar
+    por el mainloop, que puede quedar congelado tras suspender)."""
+    import ctypes
+    import subprocess
     try:
-        keyboard.unhook_all()
+        if _mutex:
+            ctypes.windll.kernel32.CloseHandle(_mutex)  # libera el candado
     except Exception:
         pass
     try:
-        keyboard._listener.listening = False  # fuerza un SetWindowsHookEx nuevo
+        if icon:
+            icon.stop()
     except Exception:
         pass
-    keyboard.hook(monitor)
-    registrar_hotkeys()
-    resume_after = time.time() + 3.0
+    if getattr(sys, "frozen", False):
+        args = [sys.executable]
+    else:
+        args = [sys.executable, os.path.abspath(__file__)]
+    DETACHED, NO_WINDOW = 0x00000008, 0x08000000
+    subprocess.Popen(args, cwd=BUNDLE, close_fds=True,
+                     creationflags=DETACHED | NO_WINDOW)
+    os._exit(0)
 
 
 def watchdog():
-    """Detecta que la compu se suspendio (salto de tiempo) y re-arma al despertar."""
+    """Detecta que la compu se suspendio (salto de tiempo) y reinicia al despertar."""
     ultimo = time.monotonic()
     while True:
         time.sleep(3)
         ahora = time.monotonic()
         if ahora - ultimo > 12:   # el sleep(3) tardo mucho -> hubo suspension
-            cmd_queue.put(("REARM", None))
+            reiniciar()
         ultimo = ahora
 
 
@@ -264,7 +275,7 @@ def tray_thread():
         pystray.MenuItem("Pausado", lambda i, x: cmd_queue.put(("PAUSE", None)),
                          checked=lambda i: paused),
         pystray.MenuItem("Reactivar detección (si dejó de responder)",
-                         lambda i, x: cmd_queue.put(("REARM", None))),
+                         lambda i, x: reiniciar()),
         pystray.MenuItem("Resetear teclado ahora", lambda i, x: cmd_queue.put(("RESET", None))),
         pystray.MenuItem("Salir", lambda i, x: cmd_queue.put(("QUIT", None))),
     )
@@ -387,8 +398,6 @@ def poll():
                 toggle_mouse()
             elif cmd == "OVERLAY":
                 toggle_overlay()
-            elif cmd == "REARM":
-                rearmar()
             elif cmd == "SETTINGS":
                 mostrar_settings()
             elif cmd == "RESET":
@@ -509,8 +518,9 @@ tk.Button(_f, text="Desbloquear", font=("Segoe UI", 16, "bold"), bg="#3a7afe",
 
 def _instancia_unica():
     """Evita que se apilen varias copias (que pelearian por los hotkeys)."""
+    global _mutex
     import ctypes
-    ctypes.windll.kernel32.CreateMutexW(None, False, "GatoGuard_SingleInstance")
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "GatoGuard_SingleInstance")
     return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
 
 
