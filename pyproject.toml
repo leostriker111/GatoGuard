@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatoguard"
-version = "2.3.4"
+version = "2.4.0"
 description = "Anti-gato para el teclado en Windows, estilo PawSense: bloquea el teclado al detectar comportamiento felino."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,7 +17,7 @@ classifiers = [
     "License :: Other/Proprietary License",
     "Environment :: Win32 (MS Windows)",
 ]
-dependencies = ["keyboard", "pystray", "Pillow", "pywin32"]
+dependencies = ["pystray", "Pillow", "pywin32"]
 
 [project.urls]
 Homepage = "https://github.com/leostriker111/GatoGuard"

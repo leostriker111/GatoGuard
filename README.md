@@ -22,7 +22,8 @@ Detecta cuando un gato se sube al teclado analizando **el comportamiento del tec
   - Una tecla pegada mucho tiempo (gato sentado encima)
 - **Predicción de texto** para no botar cuando *tú* escribes rápido: compara contra un diccionario de frecuencias, tolera *typos* y errores de dedo, y a mayor frecuencia de la palabra admite más velocidad.
 - **Multi-idioma auto-detectado**: agarra los idiomas de tu teclado de Windows. Incluye diccionarios de español e inglés; otros (p. ej. japonés en *romaji*) los cubre una heurística de vocales.
-- **Bloqueo total** con un hook de bajo nivel propio: bloquea de verdad F11, la tecla Windows, `Win+Ctrl+D` (escritorio nuevo) y demás combos que otras herramientas dejan pasar.
+- **Motor propio de teclado** (ctypes, sin dependencias de terceros): un solo hook de bajo nivel persistente hace detección *y* bloqueo. Ve **todas** las teclas — F1–F24, la tecla Windows, especiales — y bloquea de verdad `F11`, `Win+Ctrl+D` y demás combos que otras herramientas dejan pasar.
+- **Atajos a prueba de robo**: se detectan dentro del propio hook, así que funcionan aunque otra app ya tenga esa combinación registrada.
 - **Consciente de la app al frente**: relaja la detección en juegos a pantalla completa e ignora las teclas típicas de juego (WASD, flechas). Lista de apps a ignorar configurable.
 - **Reset del teclado** al desbloquear: suelta modificadores atorados, apaga CapsLock y desactiva Sticky/Filter/Toggle keys.
 - **Congelar el mouse** con `Ctrl+Alt+M` (aviso en una esquina): el gato juega con el puntero, tú lo congelas cuando quieras.

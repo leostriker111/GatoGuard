@@ -6,7 +6,6 @@ import threading
 import time
 import tkinter as tk
 
-import keyboard
 import pystray
 from PIL import Image, ImageDraw
 
@@ -35,9 +34,9 @@ DEFAULTS = {
     "reset_teclado": True,
     "mostrar_overlay": True,
     "held_threshold": 3,
-    "burst_keys": 5,
-    "burst_window": 0.45,
-    "hold_ms": 1300,
+    "burst_keys": 4,
+    "burst_window": 0.5,
+    "hold_ms": 1000,
     "cooldown": 1.0,
     "languages": [],             # [] = autodetectar del teclado
     "apps_ignoradas": [],        # exes donde NO vigilar (ej. juego.exe)
@@ -114,7 +113,7 @@ cmd_queue = queue.Queue()
 locked = False
 paused = False
 resume_after = 0.0
-key_blocker = None
+key_hook = None
 mouse_blocker = None
 mouse_frozen = False
 overlay_oculto = False
@@ -134,26 +133,71 @@ def app_al_frente():
 
 
 # ---------------- teclado ----------------
-def monitor(e):
-    if paused or locked or e.time < resume_after:
+_combo_unlock = set()
+_teclas_lock = set()
+_pressed = set()
+_combos = {}
+_combo_activo = None
+
+
+def registrar_hotkeys():
+    """Los atajos se detectan en nuestro propio hook: asi ninguna otra app nos
+    los puede robar (Ctrl+Alt+M, por ejemplo, suele estar ocupado)."""
+    _combos.clear()
+    for clave, cmd in (("hotkey_pause", "PAUSE"), ("hotkey_mouse", "MOUSE"),
+                       ("hotkey_overlay", "OVERLAY")):
+        partes = frozenset(p.strip().lower() for p in cfg[clave].split("+"))
+        _combos[partes] = cmd
+
+
+def on_key(nombre, vk, es_down, t):
+    """Unico callback del hook: atajos, deteccion y, si esta bloqueado, la
+    salida (Esc o la combo). Corre en el hilo del hook, va rapido."""
+    global _combo_activo
+    ahora = time.time()
+    if locked:
+        if es_down:
+            _teclas_lock.add(nombre)
+            if vk == hooks.VK_ESCAPE or _combo_unlock.issubset(_teclas_lock):
+                cmd_queue.put(("UNLOCK", None))
+        else:
+            _teclas_lock.discard(nombre)
+        return
+
+    if es_down:
+        _pressed.add(nombre)
+        for partes, cmd in _combos.items():
+            if partes.issubset(_pressed):
+                if _combo_activo != partes:
+                    _combo_activo = partes
+                    cmd_queue.put((cmd, None))
+                return          # el atajo no alimenta al detector
+    else:
+        _pressed.discard(nombre)
+        if _combo_activo and not _combo_activo.issubset(_pressed):
+            _combo_activo = None
+
+    if paused or ahora < resume_after:
         return
     exe, full = app_al_frente()
     if exe in cfg["apps_ignoradas"]:
         return
     campo = winutils.hay_campo_texto() if cfg["sin_campo"] else True
     juego = full and cfg["ignorar_pantalla_completa"]
-    motivo = detector.feed(e.name or "", e.scan_code, e.event_type, e.time, campo, juego)
+    motivo = detector.feed(nombre, vk, "down" if es_down else "up",
+                           ahora, campo, juego)
     if motivo:
         cmd_queue.put(("LOCK", motivo))
 
 
 def entrar_lock(motivo):
-    global locked, key_blocker
+    global locked
     locked = True
-    # hook crudo: bloquea TODO (incluye F11, Win+Ctrl+D, etc.) menos la combo
-    key_blocker = hooks.KeyBlocker(cfg["hotkey_unlock"],
-                                   lambda: cmd_queue.put(("UNLOCK", None)))
-    key_blocker.start()
+    _teclas_lock.clear()
+    _combo_unlock.clear()
+    _combo_unlock.update(p.strip().lower() for p in cfg["hotkey_unlock"].split("+"))
+    if key_hook:
+        key_hook.bloqueando = True   # el mismo hook ahora se traga TODO
     motivo_var.set("Motivo: " + motivo)
     salida_var.set("Clic en cualquier parte  ·  Esc  ·  o  " + cfg["hotkey_unlock"].upper())
     overlay.deiconify()
@@ -164,18 +208,24 @@ def entrar_lock(motivo):
 
 
 def unlock(_=None):
-    global locked, key_blocker, resume_after
+    global locked, resume_after
     if not locked:
         return
-    if key_blocker:
-        key_blocker.stop()
-        key_blocker = None
     detector.reset_estado()
     if cfg["reset_teclado"]:
         winutils.reset_teclado()
     resume_after = time.time() + cfg["cooldown"]
     locked = False
     overlay.withdraw()
+    # sigue tragando teclas un ratito: asi el Esc (y su autorepeticion) que
+    # desbloqueo no se cuela a la app de atras
+    root.after(450, _soltar_teclado)
+
+
+def _soltar_teclado():
+    if not locked and key_hook:
+        key_hook.bloqueando = False
+        _teclas_lock.clear()
 
 
 def toggle_pause(*_):
@@ -206,12 +256,6 @@ def toggle_mouse(*_):
     actualizar_hint()
 
 
-def registrar_hotkeys():
-    keyboard.add_hotkey(cfg["hotkey_pause"], lambda: cmd_queue.put(("PAUSE", None)))
-    keyboard.add_hotkey(cfg["hotkey_mouse"], lambda: cmd_queue.put(("MOUSE", None)))
-    keyboard.add_hotkey(cfg["hotkey_overlay"], lambda: cmd_queue.put(("OVERLAY", None)))
-
-
 def reiniciar(*_):
     """Relanza el proceso desde cero (hooks nuevos garantizados) y sale.
     La lib `keyboard` no revive su hook tras el reposo ni forzandolo, asi que
@@ -240,12 +284,14 @@ def reiniciar(*_):
 
 
 def watchdog():
-    """Detecta que la compu se suspendio (salto de tiempo) y reinicia al despertar."""
+    """Reinicia si la compu desperto de reposo o si el hook se murio."""
     ultimo = time.monotonic()
     while True:
         time.sleep(3)
         ahora = time.monotonic()
-        if ahora - ultimo > 12:   # el sleep(3) tardo mucho -> hubo suspension
+        if ahora - ultimo > 12:          # el sleep(3) tardo mucho -> suspension
+            reiniciar()
+        if key_hook and not key_hook.vivo():   # Windows tumbo el hook
             reiniciar()
         ultimo = ahora
 
@@ -360,7 +406,6 @@ def build_settings():
         cfg["apps_ignoradas"] = [a.strip().lower() for a in win.apps_var.get().split(",") if a.strip()]
         save_cfg(cfg)
         detector.lx = cargar_lexico(cfg)
-        keyboard.remove_all_hotkeys()
         registrar_hotkeys()
         actualizar_hint()
         win.withdraw()
@@ -525,12 +570,13 @@ def _instancia_unica():
 
 
 def main():
-    global resume_after
+    global resume_after, key_hook
     if not _instancia_unica():
         return
     winutils.reset_teclado()
     detector.reset_estado()
-    keyboard.hook(monitor)
+    key_hook = hooks.KeyHook(on_key)
+    key_hook.start()
     registrar_hotkeys()
     resume_after = time.time() + 5.0   # gracia de arranque: no botar apenas prende
     threading.Thread(target=tray_thread, daemon=True).start()

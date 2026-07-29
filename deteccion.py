@@ -154,6 +154,11 @@ class Detector:
             if len(self.recent) >= keys:
                 if juego and all(k in GAMING for k in nombres):
                     return None  # estas jugando (WASD/flechas), no un gato
+                # la prediccion solo aplica si de verdad se esta escribiendo texto:
+                # una rafaga de F-keys/especiales no forma palabra y siempre es gato
+                letras = sum(1 for k in nombres if len(k) == 1 and k in LETRAS)
+                if letras < len(nombres) / 2:
+                    return "rafaga de teclas especiales"
                 if not c["prediccion"] or agresivo:
                     return "rafaga sin sentido"
                 if self.lx.score(self.token) < SCORE_THRESH:
