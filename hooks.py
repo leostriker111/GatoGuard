@@ -4,6 +4,7 @@ tras suspender Windows y no lo recupera, ademas de no suprimir bien varias tecla
 Un solo hook persistente hace deteccion Y bloqueo."""
 import ctypes
 import threading
+import time
 from ctypes import wintypes
 
 user32 = ctypes.windll.user32
@@ -41,10 +42,60 @@ kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 
+ULONG_PTR = ctypes.c_size_t
+MARCA = 0xCA7A            # firma de las teclas que reinyectamos nosotros
+LLKHF_EXTENDED = 0x01
+KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP = 0x0001, 0x0002
+INPUT_KEYBOARD = 1
+
+
 class KBDLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD),
                 ("flags", wintypes.DWORD), ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG))]
+                ("dwExtraInfo", ULONG_PTR)]
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ULONG_PTR)]
+
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG),
+                ("mouseData", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ULONG_PTR)]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [("uMsg", wintypes.DWORD), ("wParamL", wintypes.WORD),
+                ("wParamH", wintypes.WORD)]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("mi", MOUSEINPUT), ("ki", KEYBDINPUT), ("hi", HARDWAREINPUT)]
+
+
+class INPUT(ctypes.Structure):
+    _anonymous_ = ("i",)
+    _fields_ = [("type", wintypes.DWORD), ("i", _INPUTUNION)]
+
+
+user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
+
+
+def reinyectar(eventos):
+    """Manda al sistema las teclas que habiamos retenido, marcadas como nuestras."""
+    if not eventos:
+        return
+    arr = (INPUT * len(eventos))()
+    for i, (vk, scan, flags, es_down) in enumerate(eventos):
+        f = KEYEVENTF_EXTENDEDKEY if flags & LLKHF_EXTENDED else 0
+        if not es_down:
+            f |= KEYEVENTF_KEYUP
+        arr[i].type = INPUT_KEYBOARD
+        arr[i].ki = KEYBDINPUT(vk, scan, f, 0, MARCA)
+    user32.SendInput(len(eventos), arr, ctypes.sizeof(INPUT))
 
 
 _ESPECIALES = {
@@ -140,28 +191,69 @@ class _LLHook:
 
 
 class KeyHook(_LLHook):
-    """Hook unico y persistente: siempre escucha; bloquea cuando se le pide.
+    """Hook unico y persistente: escucha, retiene y bloquea.
 
-    on_key(nombre, vk, es_down, tiempo) se llama con cada evento.
-    Devuelve True desde `bloquear_todo` para tragarse las teclas.
+    on_key(nombre, vk, es_down, tiempo) -> True si la tecla se consume (atajo).
+
+    Modo retencion (`retener_ms` > 0): cada tecla se detiene ANTES de entrar a
+    la maquina. Si en ese lapso no se detecto un gato, se reinyecta tal cual;
+    si se detecto, se descarta y nunca llega a ninguna app.
     """
 
     def __init__(self, on_key):
         super().__init__(WH_KEYBOARD_LL)
         self.on_key = on_key
         self.bloqueando = False
+        self.retener_ms = 0
+        self._buffer = []                 # [(t, vk, scan, flags, es_down)]
+        self._lock = threading.Lock()
+        threading.Thread(target=self._soltador, daemon=True).start()
+
+    def descartar(self):
+        """Tira lo retenido: las teclas del gato nunca entran a la maquina."""
+        with self._lock:
+            self._buffer.clear()
+
+    def vaciar(self):
+        """Suelta ya todo lo retenido (al apagar el modo retencion)."""
+        with self._lock:
+            pend = [e[1:] for e in self._buffer]
+            self._buffer.clear()
+        reinyectar(pend)
+
+    def _soltador(self):
+        while True:
+            time.sleep(0.008)
+            if not self._buffer:
+                continue
+            limite = time.time() - self.retener_ms / 1000.0
+            with self._lock:
+                listos, quedan = [], []
+                for e in self._buffer:
+                    (listos if e[0] <= limite else quedan).append(e)
+                self._buffer = quedan
+            if listos and not self.bloqueando:
+                reinyectar([e[1:] for e in listos])
 
     def _cb(self, nCode, wParam, lParam):
         if nCode == 0:
             info = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+            if info.dwExtraInfo == MARCA:      # es una tecla nuestra: dejala pasar
+                return user32.CallNextHookEx(None, nCode, wParam, lParam)
             es_down = wParam in (WM_KEYDOWN, WM_SYSKEYDOWN)
+            consumida = False
             try:
-                self.on_key(vk_a_nombre(info.vkCode), info.vkCode, es_down,
-                            info.time / 1000.0)
+                consumida = bool(self.on_key(vk_a_nombre(info.vkCode),
+                                             info.vkCode, es_down, time.time()))
             except Exception:
                 pass
-            if self.bloqueando:
-                return 1  # se traga la tecla: nada llega a las apps
+            if consumida or self.bloqueando:
+                return 1                       # atajo nuestro, o bloqueo total
+            if self.retener_ms > 0:
+                with self._lock:
+                    self._buffer.append((time.time(), info.vkCode, info.scanCode,
+                                         info.flags, es_down))
+                return 1                       # retenida: aun no entra a la maquina
         return user32.CallNextHookEx(None, nCode, wParam, lParam)
 
 

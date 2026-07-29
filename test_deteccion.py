@@ -115,6 +115,22 @@ def test_gaming_si_dispara_fuera_de_juego():
     assert m, "varias teclas sostenidas fuera de un juego si debe botar"
 
 
+def test_palabra_valida_baja_sospechas():
+    # misma cantidad de teclas: basura dispara, palabra real no
+    d1 = det(burst_keys=4)
+    basura = feed_word(d1, "xkqz", dt=0.05)
+    d2 = det(burst_keys=4)
+    real = feed_word(d2, "hola", dt=0.05)
+    assert basura, "basura deberia disparar"
+    assert real is None, "una palabra valida debe bajar las sospechas"
+
+
+def test_prefijo_valido_tolera_mas():
+    # 'computa' es principio de 'computadora' -> no debe botar aunque sea largo
+    d = det(burst_keys=4)
+    assert feed_word(d, "computa", dt=0.04) is None
+
+
 if __name__ == "__main__":
     for name in [n for n in dir() if n.startswith("test_")]:
         globals()[name]()

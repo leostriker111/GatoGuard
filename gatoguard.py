@@ -33,6 +33,7 @@ DEFAULTS = {
     "ignorar_pantalla_completa": True,
     "reset_teclado": True,
     "mostrar_overlay": True,
+    "retener_ms": 60,            # 0 = desactivado (teclas pasan al instante)
     "held_threshold": 3,
     "burst_keys": 4,
     "burst_window": 0.5,
@@ -57,6 +58,7 @@ ETIQUETAS = {
     "mostrar_overlay": "Mostrar el panel de estado en la esquina",
 }
 SLIDERS = {
+    "retener_ms": ("Retener teclas antes de soltarlas (ms, 0 = apagado)", 0, 200, 10),
     "held_threshold": ("Teclas simultáneas para disparar", 2, 6, 1),
     "burst_keys": ("Teclas en ráfaga para disparar", 3, 12, 1),
     "burst_window": ("Ventana de la ráfaga (seg)", 0.2, 1.0, 0.05),
@@ -193,6 +195,8 @@ def on_key(nombre, vk, es_down, t):
 def entrar_lock(motivo):
     global locked
     locked = True
+    if key_hook:
+        key_hook.descartar()   # lo que tecleo el gato jamas entra a la maquina
     _teclas_lock.clear()
     _combo_unlock.clear()
     _combo_unlock.update(p.strip().lower() for p in cfg["hotkey_unlock"].split("+"))
@@ -401,7 +405,8 @@ def build_settings():
     def aplicar():
         for key, v in win.vars.items():
             val = v.get()
-            cfg[key] = int(val) if key in ("held_threshold", "burst_keys", "hold_ms") else val
+            cfg[key] = int(val) if key in ("held_threshold", "burst_keys",
+                                           "hold_ms", "retener_ms") else val
         cfg["languages"] = [c for c, v in win.langs.items() if v.get()]
         cfg["apps_ignoradas"] = [a.strip().lower() for a in win.apps_var.get().split(",") if a.strip()]
         save_cfg(cfg)
@@ -459,7 +464,22 @@ def poll():
         m = detector.check_hold(ahora)
         if m:
             entrar_lock(m)
+    ajustar_retencion()
     root.after(30, poll)
+
+
+def ajustar_retencion():
+    """La retencion se apaga sola en pausa o en juegos a pantalla completa,
+    donde el retraso de entrada se siente."""
+    if not key_hook:
+        return
+    exe, full = app_al_frente()
+    juego = full and cfg["ignorar_pantalla_completa"]
+    quiere = 0 if (paused or juego or exe in cfg["apps_ignoradas"]) else cfg["retener_ms"]
+    if key_hook.retener_ms != quiere:
+        key_hook.retener_ms = quiere
+        if not quiere:
+            key_hook.vaciar()   # no dejar teclas atoradas al apagarlo
 
 
 root = tk.Tk()

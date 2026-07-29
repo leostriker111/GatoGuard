@@ -161,7 +161,15 @@ class Detector:
                     return "rafaga de teclas especiales"
                 if not c["prediccion"] or agresivo:
                     return "rafaga sin sentido"
-                if self.lx.score(self.token) < SCORE_THRESH:
+                score = self.lx.score(self.token)
+                # el texto ajusta las sospechas: una palabra (o principio de
+                # palabra) valida y comun tolera mas rafaga; la basura pura
+                # dispara antes
+                if score >= 0.8:
+                    keys += 2
+                elif score < 0.25:
+                    keys = max(3, keys - 1)
+                if len(self.recent) >= keys and score < SCORE_THRESH:
                     return "rafaga sin palabra valida"
         return None
 
