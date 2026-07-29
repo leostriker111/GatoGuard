@@ -100,6 +100,8 @@ class Lexico:
 class Detector:
     def __init__(self, config, lexico):
         self.cfg = config
+        self.c = config          # config efectiva (cambia en modo alerta)
+        self.alerta = False
         self.lx = lexico
         self.held = {}        # scan_code -> (name, down_time)
         self.recent = {}      # scan_code -> (nombre, time) del ultimo down
@@ -108,6 +110,21 @@ class Detector:
         self.rep_sc = None    # tecla que se esta repitiendo
         self.rep_n = 0
         self.rep_t0 = 0.0
+
+    def set_alerta(self, on):
+        """Modo 'hay un gato aqui': mismos criterios pero mas quisquillosos."""
+        self.alerta = on
+        if not on:
+            self.c = self.cfg
+            return
+        b = self.cfg
+        self.c = dict(b,
+                      burst_keys=max(3, b["burst_keys"] - 1),
+                      held_threshold=max(2, b["held_threshold"] - 1),
+                      hold_ms=int(b["hold_ms"] * 0.6),
+                      rep_keys=max(4, b["rep_keys"] - 2),
+                      vel_keys=max(4, b["vel_keys"] - 1),
+                      basura_min=max(4, b["basura_min"] - 1))
 
     def reset_estado(self):
         self.held.clear()
@@ -130,7 +147,7 @@ class Detector:
     def feed(self, name, scan_code, event_type, now, campo=True, juego=False):
         """Devuelve el motivo (str) si parece gato, o None.
         juego=True (app en pantalla completa) relaja para no botar jugando."""
-        c = self.cfg
+        c = self.c
         if event_type == "up":
             self.held.pop(scan_code, None)
             return None
@@ -213,9 +230,9 @@ class Detector:
 
     def check_hold(self, now):
         """Se llama periodicamente: detecta una tecla pegada mucho tiempo."""
-        if not self.cfg["tecla_pegada"]:
+        if not self.c["tecla_pegada"]:
             return None
-        limite = self.cfg["hold_ms"] / 1000.0
+        limite = self.c["hold_ms"] / 1000.0
         for name, t in list(self.held.values()):
             if name not in EXENTAS_HOLD and now - t >= limite:
                 return "tecla pegada"

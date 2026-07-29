@@ -72,11 +72,14 @@ Para que arranque solo con Windows, crea un acceso directo a `GatoGuard.exe` (o 
 | Desbloquear | Clic en cualquier parte de la pantalla de bloqueo, o `Ctrl+Alt+U` |
 | Modo descanso (dejar de detectar sin cerrar) | `Ctrl+Alt+G` — alterna entre 🐈 *Hay gatos cerca* y 😴 *No hay gatos cerca* |
 | Congelar / descongelar mouse | `Ctrl+Alt+M` (el aviso vive en una esquina) |
+| Avisar "¡aquí hay un gato!" | `Shift+A+S+D` — activa el modo alerta (umbrales más quisquillosos). Da igual si lo pisa el gato: confirma la premisa 🐈 |
+| Minimizar el panel | Clic en el gatito del panel |
+| Mover el panel | Arrástralo a donde quieras (recuerda la posición) |
 | Ocultar / mostrar el panel de estado | `Ctrl+Alt+H` |
 
 > Al suspender la PC, la librería de teclado pierde su hook. GatoGuard **se reinicia solo** al despertar (proceso nuevo = hooks nuevos). Si alguna vez no responde, **bandeja → "Reactivar detección"** hace el mismo reinicio manualmente.
 
-El **panel de estado** (esquina inferior derecha) muestra si está vigilando o en descanso, el estado del mouse y cómo ocultarlo. Es *click-through* (no estorba los clics).
+El **panel de estado** muestra si está vigilando, en descanso o en alerta de gato, más el estado del mouse. Puedes **minimizarlo** (clic en el gatito), **moverlo** arrastrándolo a cualquier esquina, u ocultarlo del todo. Recuerda dónde lo dejaste.
 | Configurar | Clic derecho en el ícono → **Configuración** |
 | Resetear teclado ya | Menú de la bandeja → **Resetear teclado ahora** |
 | Salir | Menú de la bandeja → **Salir** |

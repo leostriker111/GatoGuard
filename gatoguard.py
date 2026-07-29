@@ -53,6 +53,10 @@ DEFAULTS = {
     "hotkey_pause": "ctrl+alt+g",
     "hotkey_mouse": "ctrl+alt+m",
     "hotkey_overlay": "ctrl+alt+h",
+    "hotkey_gato": "shift+a+s+d",
+    "panel_x": None,
+    "panel_y": None,
+    "panel_min": False,
 }
 
 ETIQUETAS = {
@@ -161,7 +165,7 @@ def registrar_hotkeys():
     los puede robar (Ctrl+Alt+M, por ejemplo, suele estar ocupado)."""
     _combos.clear()
     for clave, cmd in (("hotkey_pause", "PAUSE"), ("hotkey_mouse", "MOUSE"),
-                       ("hotkey_overlay", "OVERLAY")):
+                       ("hotkey_overlay", "OVERLAY"), ("hotkey_gato", "GATO")):
         partes = frozenset(p.strip().lower() for p in cfg[clave].split("+"))
         _combos[partes] = cmd
 
@@ -260,6 +264,17 @@ def toggle_overlay(*_):
     actualizar_hint()
 
 
+def toggle_gato(*_):
+    """'Aqui hay un gato': despierta la vigilancia y la pone quisquillosa.
+    Si lo pisa el propio gato, mejor: confirma la premisa."""
+    global paused
+    detector.set_alerta(not detector.alerta)
+    if detector.alerta:
+        paused = False
+        detector.reset_estado()
+    actualizar_hint()
+
+
 def toggle_mouse(*_):
     global mouse_blocker, mouse_frozen
     if mouse_frozen:
@@ -336,6 +351,9 @@ def tray_thread():
     global icon
     menu = pystray.Menu(
         pystray.MenuItem("Configuración", lambda i, x: cmd_queue.put(("SETTINGS", None))),
+        pystray.MenuItem("¡Aquí hay un gato! (modo alerta)",
+                         lambda i, x: cmd_queue.put(("GATO", None)),
+                         checked=lambda i: detector.alerta),
         pystray.MenuItem("Pausado", lambda i, x: cmd_queue.put(("PAUSE", None)),
                          checked=lambda i: paused),
         pystray.MenuItem("Reactivar detección (si dejó de responder)",
@@ -385,7 +403,8 @@ def build_settings():
     tk.Label(win, text="Atajos", font=("Segoe UI", 12, "bold"),
              **L).pack(anchor="w", pady=(12, 2))
     for key, txt in [("hotkey_unlock", "Desbloquear"), ("hotkey_pause", "Pausar/Reanudar"),
-                     ("hotkey_mouse", "Congelar mouse"), ("hotkey_overlay", "Ocultar panel")]:
+                     ("hotkey_mouse", "Congelar mouse"), ("hotkey_overlay", "Ocultar panel"),
+                     ("hotkey_gato", "¡Hay un gato!")]:
         row = tk.Frame(win, bg="#1a1a20")
         row.pack(anchor="w", fill="x")
         tk.Label(row, text=txt + ":", width=16, anchor="w", bg="#1a1a20",
@@ -426,6 +445,7 @@ def build_settings():
         cfg["apps_ignoradas"] = [a.strip().lower() for a in win.apps_var.get().split(",") if a.strip()]
         save_cfg(cfg)
         detector.lx = cargar_lexico(cfg)
+        detector.set_alerta(detector.alerta)   # recalcula umbrales efectivos
         registrar_hotkeys()
         actualizar_hint()
         win.withdraw()
@@ -463,6 +483,8 @@ def poll():
                 toggle_mouse()
             elif cmd == "OVERLAY":
                 toggle_overlay()
+            elif cmd == "GATO":
+                toggle_gato()
             elif cmd == "SETTINGS":
                 mostrar_settings()
             elif cmd == "RESET":
@@ -506,58 +528,82 @@ hint_var = tk.StringVar(value="")
 ocultar_var = tk.StringVar(value="")
 
 
-def _click_through(win, alpha=0.82):
-    """Hace la ventana click-through SIN romper el render (argtypes bien puestos,
-    y re-aplica el alpha para forzar repintado de la ventana layered)."""
-    try:
-        import ctypes
-        from ctypes import wintypes
-        u = ctypes.windll.user32
-        u.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
-        u.GetAncestor.restype = wintypes.HWND
-        u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
-        u.GetWindowLongW.restype = ctypes.c_long
-        u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
-        u.SetLayeredWindowAttributes.argtypes = [
-            wintypes.HWND, wintypes.COLORREF, ctypes.c_ubyte, wintypes.DWORD]
-        hwnd = u.GetAncestor(win.winfo_id(), 2)  # GA_ROOT = ventana top-level real
-        GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT = -20, 0x00080000, 0x00000020
-        cur = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        u.SetWindowLongW(hwnd, GWL_EXSTYLE, cur | WS_EX_LAYERED | WS_EX_TRANSPARENT)
-        u.SetLayeredWindowAttributes(hwnd, 0, int(alpha * 255), 0x2)  # LWA_ALPHA
-    except Exception:
-        pass  # si falla, la ventana se queda visible (no click-through) pero funciona
-
-
 hint = tk.Toplevel(root)
 hint.overrideredirect(True)
 hint.attributes("-topmost", True)
-hint.attributes("-alpha", 0.82)
+hint.attributes("-alpha", 0.88)
 hint.configure(bg="#101014")
-estado_lbl = tk.Label(hint, textvariable=estado_var, bg="#101014", fg="#6ab0ff",
-                      font=("Segoe UI", 9, "bold"), anchor="e")
-estado_lbl.pack(fill="x", padx=10, pady=(5, 0))
-hint_lbl = tk.Label(hint, textvariable=hint_var, bg="#101014", fg="#6a6a76",
-                    font=("Segoe UI", 9), anchor="e")
-hint_lbl.pack(fill="x", padx=10)
-ocultar_lbl = tk.Label(hint, textvariable=ocultar_var, bg="#101014", fg="#4a4a54",
-                       font=("Segoe UI", 8), anchor="e")
-ocultar_lbl.pack(fill="x", padx=10, pady=(0, 5))
+
+_cont = tk.Frame(hint, bg="#101014")
+_cont.pack(padx=8, pady=5)
+gato_lbl = tk.Label(_cont, text="\U0001F408", font=("Segoe UI Emoji", 16),
+                    bg="#101014", fg="#ffffff", cursor="hand2")
+gato_lbl.pack(side="left", padx=(0, 8))
+_txt = tk.Frame(_cont, bg="#101014")
+_txt.pack(side="left")
+estado_lbl = tk.Label(_txt, textvariable=estado_var, bg="#101014", fg="#6ab0ff",
+                      font=("Segoe UI", 9, "bold"), anchor="w")
+estado_lbl.pack(fill="x")
+hint_lbl = tk.Label(_txt, textvariable=hint_var, bg="#101014", fg="#6a6a76",
+                    font=("Segoe UI", 9), anchor="w")
+hint_lbl.pack(fill="x")
+ocultar_lbl = tk.Label(_txt, textvariable=ocultar_var, bg="#101014", fg="#4a4a54",
+                       font=("Segoe UI", 8), anchor="w")
+ocultar_lbl.pack(fill="x")
 hint.withdraw()
+
+_drag = {}
+
+
+def _panel_press(e):
+    _drag.update(x=e.x_root, y=e.y_root, wx=hint.winfo_x(), wy=hint.winfo_y(),
+                 movido=False)
+
+
+def _panel_motion(e):
+    dx, dy = e.x_root - _drag["x"], e.y_root - _drag["y"]
+    if abs(dx) > 4 or abs(dy) > 4:
+        _drag["movido"] = True
+    hint.geometry("+%d+%d" % (_drag["wx"] + dx, _drag["wy"] + dy))
+
+
+def _panel_release(e):
+    if _drag.get("movido"):
+        cfg["panel_x"], cfg["panel_y"] = hint.winfo_x(), hint.winfo_y()
+        save_cfg(cfg)
+    elif e.widget is gato_lbl:
+        cfg["panel_min"] = not cfg["panel_min"]
+        save_cfg(cfg)
+        actualizar_hint()
+
+
+for _w in (hint, _cont, _txt, gato_lbl, estado_lbl, hint_lbl, ocultar_lbl):
+    _w.bind("<Button-1>", _panel_press)
+    _w.bind("<B1-Motion>", _panel_motion)
+    _w.bind("<ButtonRelease-1>", _panel_release)
 
 
 def actualizar_hint():
     if not cfg["mostrar_overlay"] or overlay_oculto:
         hint.withdraw()
         return
-    if paused:
-        estado_var.set("😴 No hay gatos cerca · detección en pausa  (" +
+
+    if detector.alerta:
+        gato_lbl.config(fg="#ffd166")
+        estado_var.set("¡AQUÍ HAY UN GATO! · modo alerta  (" +
+                       cfg["hotkey_gato"].upper() + ")")
+        estado_lbl.config(fg="#ffd166")
+    elif paused:
+        gato_lbl.config(fg="#6a6a76")
+        estado_var.set("😴 No hay gatos cerca · en pausa  (" +
                        cfg["hotkey_pause"].upper() + ")")
         estado_lbl.config(fg="#8a8a96")
     else:
-        estado_var.set("🐈 Hay gatos cerca · vigilando  (" +
-                       cfg["hotkey_pause"].upper() + ")")
+        gato_lbl.config(fg="#ffffff")
+        estado_var.set("Vigilando  (" + cfg["hotkey_gato"].upper() +
+                       " = aquí hay un gato)")
         estado_lbl.config(fg="#6ab0ff")
+
     combo = cfg["hotkey_mouse"].upper()
     if mouse_frozen:
         hint_var.set("🖱 Mouse CONGELADO · " + combo)
@@ -565,15 +611,25 @@ def actualizar_hint():
     else:
         hint_var.set("🖱 " + combo + " congela el mouse")
         hint_lbl.config(fg="#6a6a76")
-    ocultar_var.set("🙈 " + cfg["hotkey_overlay"].upper() + " oculta este panel")
+    ocultar_var.set("Clic al gato = minimizar · arrastra = mover · " +
+                    cfg["hotkey_overlay"].upper() + " = ocultar")
+
+    if cfg["panel_min"]:
+        _txt.pack_forget()
+    elif not _txt.winfo_ismapped():
+        _txt.pack(side="left")
+
     hint.update_idletasks()
     w, h = hint.winfo_reqwidth(), hint.winfo_reqheight()
-    x = root.winfo_screenwidth() - w - 14
-    y = root.winfo_screenheight() - h - 48
-    hint.geometry(f"+{x}+{y}")
+    if cfg["panel_x"] is None:
+        x = root.winfo_screenwidth() - w - 14
+        y = root.winfo_screenheight() - h - 48
+    else:   # posicion elegida por el usuario, sin salirse de la pantalla
+        x = max(0, min(int(cfg["panel_x"]), root.winfo_screenwidth() - w))
+        y = max(0, min(int(cfg["panel_y"]), root.winfo_screenheight() - h))
+    hint.geometry("+%d+%d" % (x, y))
     hint.deiconify()
     hint.lift()
-    _click_through(hint)
 
 overlay = tk.Toplevel(root)
 overlay.withdraw()
