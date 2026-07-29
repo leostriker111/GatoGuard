@@ -28,12 +28,20 @@ DEFAULTS = {
     "rafaga": True,
     "simultaneas": True,
     "tecla_pegada": True,
+    "velocidad": True,
+    "repeticion": True,
+    "basura": True,
     "prediccion": True,
     "sin_campo": False,          # apagado por defecto: era lo que botaba de mas
     "ignorar_pantalla_completa": True,
     "reset_teclado": True,
     "mostrar_overlay": True,
     "retener_ms": 60,            # 0 = desactivado (teclas pasan al instante)
+    "vel_keys": 6,               # 6 teclas en 0.18s = 33/seg, imposible a mano
+    "vel_window": 0.18,
+    "rep_keys": 7,               # veces la misma tecla en rep_window
+    "rep_window": 1.2,
+    "basura_min": 5,             # letras seguidas sin sentido
     "held_threshold": 3,
     "burst_keys": 4,
     "burst_window": 0.5,
@@ -51,6 +59,9 @@ ETIQUETAS = {
     "rafaga": "Detectar ráfaga de teclas sin sentido",
     "simultaneas": "Detectar varias teclas mantenidas a la vez",
     "tecla_pegada": "Detectar una tecla pegada mucho tiempo",
+    "velocidad": "Freno: tecleo imposible de rápido",
+    "repeticion": "Freno: la misma tecla machacada (aaaaaa)",
+    "basura": "Freno: texto sin sentido aunque sea lento (sdrtg)",
     "prediccion": "Predicción de texto (no botar al escribir rápido)",
     "sin_campo": "Ser más agresivo si no hay campo de texto",
     "ignorar_pantalla_completa": "Relajar detección en apps de pantalla completa (juegos)",
@@ -61,6 +72,9 @@ SLIDERS = {
     "retener_ms": ("Retener teclas antes de soltarlas (ms, 0 = apagado)", 0, 200, 10),
     "held_threshold": ("Teclas simultáneas para disparar", 2, 6, 1),
     "burst_keys": ("Teclas en ráfaga para disparar", 3, 12, 1),
+    "vel_keys": ("Freno velocidad: teclas en 0.2s", 4, 10, 1),
+    "rep_keys": ("Freno repetición: veces la misma tecla", 4, 15, 1),
+    "basura_min": ("Freno basura: letras sin sentido", 4, 10, 1),
     "burst_window": ("Ventana de la ráfaga (seg)", 0.2, 1.0, 0.05),
     "hold_ms": ("Tiempo de tecla pegada (ms)", 500, 3000, 100),
     "cooldown": ("Gracia tras desbloquear (seg)", 0.5, 3.0, 0.5),
@@ -406,7 +420,8 @@ def build_settings():
         for key, v in win.vars.items():
             val = v.get()
             cfg[key] = int(val) if key in ("held_threshold", "burst_keys",
-                                           "hold_ms", "retener_ms") else val
+                                           "hold_ms", "retener_ms", "vel_keys",
+                                           "rep_keys", "basura_min") else val
         cfg["languages"] = [c for c, v in win.langs.items() if v.get()]
         cfg["apps_ignoradas"] = [a.strip().lower() for a in win.apps_var.get().split(",") if a.strip()]
         save_cfg(cfg)

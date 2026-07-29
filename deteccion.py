@@ -102,16 +102,25 @@ class Detector:
         self.cfg = config
         self.lx = lexico
         self.held = {}        # scan_code -> (name, down_time)
-        self.recent = {}      # scan_code -> time del ultimo down
+        self.recent = {}      # scan_code -> (nombre, time) del ultimo down
         self.token = ""       # palabra que se esta escribiendo
+        self.downs = []       # tiempos de los ultimos keydown (velocidad)
+        self.rep_sc = None    # tecla que se esta repitiendo
+        self.rep_n = 0
+        self.rep_t0 = 0.0
 
     def reset_estado(self):
         self.held.clear()
         self.recent.clear()
         self.token = ""
+        self.downs.clear()
+        self.rep_sc = None
+        self.rep_n = 0
 
     def _actualiza_token(self, name):
-        if len(name) == 1 and name in LETRAS:
+        # los digitos tambien cuentan: 'rz555' en Blender es un desastre, y si
+        # se borraba el token con cada numero nunca se llegaba a juzgar
+        if len(name) == 1 and (name in LETRAS or name.isdigit()):
             self.token = (self.token + name)[-12:]
         elif name == "backspace":
             self.token = self.token[:-1]
@@ -137,6 +146,30 @@ class Detector:
                 del self.recent[sc]
         self._actualiza_token(name)
 
+        # --- frenos de emergencia: certeza alta, se dispara de inmediato ---
+
+        # 1) velocidad imposible para una mano humana
+        if c["velocidad"]:
+            self.downs.append(now)
+            self.downs = [t for t in self.downs if now - t <= c["vel_window"]]
+            if len(self.downs) >= c["vel_keys"] and not juego:
+                return "tecleo imposible de rapido"
+
+        # 2) la misma tecla machacada (aaaaaaa): antes contaba como una sola
+        if c["repeticion"] and name not in EXENTAS_HOLD:
+            if scan_code == self.rep_sc and now - self.rep_t0 <= c["rep_window"]:
+                self.rep_n += 1
+                if self.rep_n >= c["rep_keys"]:
+                    return "misma tecla repetida"
+            else:
+                self.rep_sc, self.rep_n, self.rep_t0 = scan_code, 1, now
+
+        # 3) basura acumulada aunque se escriba despacio (sdrtg, rz555).
+        # Pide >=2 letras: asi escribir numeros sueltos (1234, x1000) no cuenta.
+        if c["basura"] and c["prediccion"] and len(self.token) >= c["basura_min"]:
+            if sum(ch in LETRAS for ch in self.token) >= 2 and self.lx.score(self.token) < 0.25:
+                return "texto sin sentido"
+
         if c["simultaneas"]:
             # los modificadores no cuentan: Ctrl+Shift+X es un atajo, no un gato
             nomod = [nm for (nm, t) in self.held.values()
@@ -156,11 +189,16 @@ class Detector:
                     return None  # estas jugando (WASD/flechas), no un gato
                 # la prediccion solo aplica si de verdad se esta escribiendo texto:
                 # una rafaga de F-keys/especiales no forma palabra y siempre es gato
-                letras = sum(1 for k in nombres if len(k) == 1 and k in LETRAS)
-                if letras < len(nombres) / 2:
+                # escribir (letras o numeros) no es "especial"; F-keys y demas si
+                normales = sum(1 for k in nombres
+                               if len(k) == 1 and (k in LETRAS or k.isdigit()))
+                if normales < len(nombres) / 2:
                     return "rafaga de teclas especiales"
                 if not c["prediccion"] or agresivo:
                     return "rafaga sin sentido"
+                # sin al menos 2 letras no hay texto que juzgar (numeros sueltos)
+                if sum(ch in LETRAS for ch in self.token) < 2:
+                    return None
                 score = self.lx.score(self.token)
                 # el texto ajusta las sospechas: una palabra (o principio de
                 # palabra) valida y comun tolera mas rafaga; la basura pura

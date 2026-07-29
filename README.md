@@ -20,6 +20,10 @@ Detecta cuando un gato se sube al teclado analizando **el comportamiento del tec
   - Ráfaga de teclas sin sentido
   - Varias teclas mantenidas a la vez (una pata aplasta varias)
   - Una tecla pegada mucho tiempo (gato sentado encima)
+- **Frenos de emergencia** — cuando la certeza es alta no espera a nada, corta al instante:
+  - *Velocidad imposible*: 6 teclas en 0.18 s (más rápido que cualquier mano)
+  - *Misma tecla machacada*: `aaaaaaa` — antes contaba como una sola tecla
+  - *Texto sin sentido*: `sdrtg`, `rz555` — aunque se escriba despacio (en Blender, `rz555` es un desastre)
 - **Retención de teclas** (lo que hace la diferencia): cada tecla se detiene unos milisegundos **antes de entrar a la máquina**. Si en ese lapso no se detecta un gato, se reinyecta tal cual y no notas nada; si se detecta, se **descarta y jamás llega a ninguna app**. Configurable (60 ms por defecto, 0 = apagado) y se apaga sola en juegos a pantalla completa.
 - **Predicción de texto** para no botar cuando *tú* escribes rápido: compara contra un diccionario de frecuencias, tolera *typos* y errores de dedo. Una palabra —o principio de palabra— válida **baja las sospechas** y tolera más ráfaga; la basura pura dispara antes.
 - **Multi-idioma auto-detectado**: agarra los idiomas de tu teclado de Windows. Incluye diccionarios de español e inglés; otros (p. ej. japonés en *romaji*) los cubre una heurística de vocales.

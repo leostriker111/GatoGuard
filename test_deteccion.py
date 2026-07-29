@@ -3,8 +3,10 @@ from deteccion import Detector, Lexico
 
 CFG = dict(
     rafaga=True, simultaneas=True, tecla_pegada=True, prediccion=True,
+    velocidad=True, repeticion=True, basura=True,
     sin_campo=True, held_threshold=3, burst_keys=5, burst_window=0.5,
     hold_ms=1100, cooldown=1.0,
+    vel_keys=6, vel_window=0.18, rep_keys=7, rep_window=1.2, basura_min=5,
 )
 
 LX = Lexico.cargar(os.path.join(os.path.dirname(__file__), "es_50k.txt"))
@@ -129,6 +131,65 @@ def test_prefijo_valido_tolera_mas():
     # 'computa' es principio de 'computadora' -> no debe botar aunque sea largo
     d = det(burst_keys=4)
     assert feed_word(d, "computa", dt=0.04) is None
+
+
+def test_freno_misma_tecla_repetida():
+    # "aaaaaaa" antes NO se detectaba (contaba como una sola tecla distinta)
+    d = det()
+    motivo, t = None, 0.0
+    for _ in range(9):
+        motivo = motivo or d.feed("a", 30, "down", t)
+        d.feed("a", 30, "up", t + 0.03)
+        t += 0.12
+    assert motivo == "misma tecla repetida", motivo
+
+
+def test_freno_basura_lenta():
+    # "sdrtg" escrito DESPACIO: la ventana de rafaga expira, pero es basura
+    d = det()
+    motivo, t = None, 0.0
+    for i, ch in enumerate("sdrtg"):
+        motivo = motivo or d.feed(ch, 40 + i, "down", t)
+        d.feed(ch, 40 + i, "up", t + 0.05)
+        t += 0.9          # lentisimo, una tecla por segundo casi
+    assert motivo == "texto sin sentido", motivo
+
+
+def test_freno_velocidad_imposible():
+    # 5 teclas en 200ms = mas rapido que cualquier humano
+    d = det()
+    motivo, t = None, 0.0
+    for i, ch in enumerate("qwerty"):       # se sueltan, para aislar velocidad
+        motivo = motivo or d.feed(ch, 50 + i, "down", t)
+        d.feed(ch, 50 + i, "up", t + 0.005)
+        t += 0.025                          # 40 teclas/seg
+    assert motivo == "tecleo imposible de rapido", motivo
+
+
+def test_frenos_no_molestan_al_humano():
+    # escribir despacio y bien no debe disparar ningun freno
+    d = det()
+    motivo, t = None, 0.0
+    for palabra in ["hola", "como", "estas", "todo", "bien"]:
+        for i, ch in enumerate(palabra):
+            motivo = motivo or d.feed(ch, 60 + i, "down", t)
+            d.feed(ch, 60 + i, "up", t + 0.04)
+            t += 0.15
+        motivo = motivo or d.feed("space", 57, "down", t)
+        d.feed("space", 57, "up", t + 0.03)
+        t += 0.2
+    assert motivo is None, motivo
+
+
+def test_doble_letra_normal_no_dispara():
+    # "aa" de 'llamar', 'ee' de 'leer'... repetir 2-3 veces es normal
+    d = det()
+    motivo, t = None, 0.0
+    for ch in "ll":
+        motivo = motivo or d.feed(ch, 38, "down", t)
+        d.feed(ch, 38, "up", t + 0.04)
+        t += 0.14
+    assert motivo is None, motivo
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gatoguard"
-version = "2.5.0"
+version = "2.6.0"
 description = "Anti-gato para el teclado en Windows, estilo PawSense: bloquea el teclado al detectar comportamiento felino."
 readme = "README.md"
 requires-python = ">=3.9"
